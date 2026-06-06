@@ -59,7 +59,9 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 ## Gotchas
 
-- `gemini-1.5-flash` is NOT available via the SDK — use `gemini-2.0-flash`
+- `gemini-1.5-flash` is deprecated/removed from the Generative Language API — do not use it
+- `gemini-2.0-flash` and `gemini-2.0-flash-lite` have free-tier quota of 0 for some API keys
+- Use `gemini-2.5-flash` — it works but may return 503 under high demand; the service wraps all calls in retry logic with exponential backoff
 - Always run `pnpm run typecheck:libs` after editing any `lib/*` package before checking artifact packages
 - Import types from `@workspace/api-client-react` (barrel export), not from deep src paths
 - Never call React hooks inside JSX — extract to component scope first

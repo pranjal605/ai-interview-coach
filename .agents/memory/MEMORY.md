@@ -1,0 +1,1 @@
+- [Gemini model selection](gemini-models.md) — gemini-2.5-flash is the only working model for this project's API key; 1.5-flash is deleted, 2.0-flash has zero quota
