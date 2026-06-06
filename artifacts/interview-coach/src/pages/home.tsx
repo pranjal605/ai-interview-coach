@@ -50,11 +50,18 @@ export default function HomeScreen() {
       setPhase("question");
       setLocation("/interview");
       
-    } catch (error) {
+    } catch (error: unknown) {
       setPhase("home");
+      let description = "Something went wrong. Please try again.";
+      if (error && typeof error === "object" && "response" in error) {
+        const res = (error as { response?: { status?: number; data?: { message?: string } } }).response;
+        if (res?.status === 429) {
+          description = res.data?.message ?? "AI rate limit reached — please wait a moment and try again.";
+        }
+      }
       toast({
-        title: "Error starting session",
-        description: "Please try again later.",
+        title: "Couldn't start session",
+        description,
         variant: "destructive"
       });
     }
@@ -136,10 +143,8 @@ export default function HomeScreen() {
               <CardDescription>Practice questions based on a specific job description.</CardDescription>
             </CardHeader>
             <CardContent>
-              <Button variant="outline" className="w-full bg-white dark:bg-slate-950" asChild>
-                <Link href="/jd">
-                  Paste Job Description <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
+              <Button variant="outline" className="w-full bg-white dark:bg-slate-950" onClick={() => setLocation("/jd")}>
+                Paste Job Description <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </CardContent>
           </Card>
