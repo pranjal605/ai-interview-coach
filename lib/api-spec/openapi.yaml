@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: interview
+    description: Interview session operations
 paths:
   /healthz:
     get:
@@ -24,6 +26,134 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /interview/sessions:
+    post:
+      operationId: startSession
+      tags: [interview]
+      summary: Start a new interview session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SessionInput"
+      responses:
+        "201":
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "400":
+          description: Bad request
+    get:
+      operationId: listSessions
+      tags: [interview]
+      summary: List recent interview sessions
+      responses:
+        "200":
+          description: List of sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Session"
+
+  /interview/sessions/{sessionId}:
+    get:
+      operationId: getSession
+      tags: [interview]
+      summary: Get a session by ID
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Session found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "404":
+          description: Not found
+
+  /interview/question:
+    post:
+      operationId: generateQuestion
+      tags: [interview]
+      summary: Generate an AI interview question
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuestionInput"
+      responses:
+        "200":
+          description: Generated question
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Question"
+
+  /interview/evaluate:
+    post:
+      operationId: evaluateAnswer
+      tags: [interview]
+      summary: Evaluate a candidate answer with AI
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EvaluationInput"
+      responses:
+        "200":
+          description: Evaluation feedback
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Feedback"
+
+  /interview/jd-questions:
+    post:
+      operationId: parseJdQuestions
+      tags: [interview]
+      summary: Generate questions from a job description
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JdInput"
+      responses:
+        "200":
+          description: Generated questions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Question"
+
+  /interview/stats:
+    get:
+      operationId: getStats
+      tags: [interview]
+      summary: Get aggregate interview stats
+      responses:
+        "200":
+          description: Stats summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InterviewStats"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +164,122 @@ components:
       required:
         - status
 
+    SessionInput:
+      type: object
+      required: [role, difficulty, totalQuestions]
+      properties:
+        role:
+          type: string
+        difficulty:
+          type: string
+        totalQuestions:
+          type: integer
+
+    Session:
+      type: object
+      required: [id, role, difficulty, totalQuestions, createdAt]
+      properties:
+        id:
+          type: string
+        role:
+          type: string
+        difficulty:
+          type: string
+        totalQuestions:
+          type: integer
+        questions:
+          type: array
+          items:
+            type: string
+        answers:
+          type: array
+          items:
+            type: string
+        scores:
+          type: array
+          items:
+            type: number
+        feedbackList:
+          type: array
+          items:
+            $ref: "#/components/schemas/Feedback"
+        createdAt:
+          type: string
+
+    QuestionInput:
+      type: object
+      required: [role, difficulty]
+      properties:
+        role:
+          type: string
+        difficulty:
+          type: string
+
+    Question:
+      type: object
+      required: [question, hint, expectedKeywords]
+      properties:
+        question:
+          type: string
+        hint:
+          type: string
+        expectedKeywords:
+          type: array
+          items:
+            type: string
+
+    EvaluationInput:
+      type: object
+      required: [sessionId, questionIndex, question, answer, expectedKeywords]
+      properties:
+        sessionId:
+          type: string
+        questionIndex:
+          type: integer
+        question:
+          type: string
+        answer:
+          type: string
+        expectedKeywords:
+          type: array
+          items:
+            type: string
+
+    Feedback:
+      type: object
+      required: [score, strengths, improvements, modelAnswer, keywordCoverage]
+      properties:
+        score:
+          type: integer
+        strengths:
+          type: array
+          items:
+            type: string
+        improvements:
+          type: array
+          items:
+            type: string
+        modelAnswer:
+          type: string
+        keywordCoverage:
+          type: integer
+
+    JdInput:
+      type: object
+      required: [jdText]
+      properties:
+        jdText:
+          type: string
+
+    InterviewStats:
+      type: object
+      required: [totalSessions, averageScore, topRole, totalQuestions]
+      properties:
+        totalSessions:
+          type: integer
+        averageScore:
+          type: number
+        topRole:
+          type: string
+        totalQuestions:
+          type: integer
