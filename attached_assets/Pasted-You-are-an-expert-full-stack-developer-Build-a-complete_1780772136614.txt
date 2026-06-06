@@ -1,0 +1,489 @@
+You are an expert full-stack developer. Build a complete AI-powered Mock Interview Coach web application from scratch. Follow every instruction below exactly.
+
+═══════════════════════════════════════
+PROJECT OVERVIEW
+═══════════════════════════════════════
+
+Name: AI Interview Coach
+Purpose: A web app where users select a job role and difficulty, answer AI-generated interview questions (by text or voice), and get structured AI feedback with scores after each answer.
+
+═══════════════════════════════════════
+TECH STACK — USE EXACTLY THESE
+═══════════════════════════════════════
+
+Frontend:
+- React.js (Create React App or Vite)
+- React Router DOM v6
+- Axios (for API calls)
+- Recharts (for score history chart)
+- Plain CSS (no Tailwind, no UI library)
+- Web Speech API (browser built-in, no extra library)
+
+Backend:
+- Node.js + Express.js
+- Mongoose + MongoDB Atlas (free tier)
+- @google/generative-ai (official Gemini SDK)
+- dotenv, cors
+
+DO NOT use TypeScript. Use plain JavaScript throughout.
+DO NOT use any authentication or login system.
+DO NOT use Redux. Use React Context for state.
+DO NOT use Claude API or Anthropic SDK anywhere.
+
+═══════════════════════════════════════
+FOLDER STRUCTURE — CREATE EXACTLY THIS
+═══════════════════════════════════════
+
+interview-coach/
+├── client/
+│   ├── public/
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── HomeScreen.jsx
+│   │   │   ├── InterviewScreen.jsx
+│   │   │   ├── FeedbackCard.jsx
+│   │   │   ├── SessionSummary.jsx
+│   │   │   ├── VoiceInput.jsx
+│   │   │   └── Timer.jsx
+│   │   ├── pages/
+│   │   │   ├── Dashboard.jsx
+│   │   │   └── JDInterview.jsx
+│   │   ├── hooks/
+│   │   │   ├── useInterview.js
+│   │   │   └── useVoice.js
+│   │   ├── services/
+│   │   │   └── api.js
+│   │   ├── context/
+│   │   │   └── SessionContext.jsx
+│   │   ├── App.jsx
+│   │   └── App.css
+│   ├── .env
+│   └── package.json
+│
+├── server/
+│   ├── routes/
+│   │   ├── question.js
+│   │   ├── evaluate.js
+│   │   ├── session.js
+│   │   └── jd.js
+│   ├── models/
+│   │   └── Session.js
+│   ├── services/
+│   │   └── geminiService.js
+│   ├── middleware/
+│   │   └── errorHandler.js
+│   ├── config/
+│   │   └── db.js
+│   ├── server.js
+│   ├── .env
+│   ├── .env.example
+│   └── package.json
+│
+└── README.md
+
+═══════════════════════════════════════
+BACKEND — BUILD THESE EXACTLY
+═══════════════════════════════════════
+
+--- server/config/db.js ---
+Connect to MongoDB using mongoose.connect(process.env.MONGO_URI).
+Log success or error to console.
+
+--- server/models/Session.js ---
+Mongoose schema with these fields:
+  sessionId: String (required, unique, indexed)
+  role: String (required)
+  difficulty: String (required)
+  questions: [String]
+  answers: [String]
+  scores: [Number]
+  feedback: [Object]
+  createdAt: Date (default: Date.now)
+
+--- server/services/geminiService.js ---
+Use the @google/generative-ai npm package.
+Import { GoogleGenerativeAI } from "@google/generative-ai".
+Create ONE instance: const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY).
+Get the model once: const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }).
+
+Export three async functions:
+
+1. generateQuestion(role, difficulty)
+   Build this prompt string:
+   "You are a strict technical interviewer. Generate ONE {difficulty} level interview question for a {role} candidate. Return ONLY a raw JSON object with NO markdown, NO code blocks, NO extra text. Exact format: { \"question\": \"...\", \"hint\": \"...\", \"expectedKeywords\": [\"keyword1\", \"keyword2\", \"keyword3\"] }"
+   
+   Call: const result = await model.generateContent(prompt)
+   Get text: const text = result.response.text()
+   Clean the response: strip any markdown code fences using:
+     const cleaned = text.replace(/```json|```/g, "").trim()
+   Parse with JSON.parse(cleaned) inside try/catch.
+   Return the parsed object.
+
+2. evaluateAnswer(question, answer, expectedKeywords)
+   Build this prompt string:
+   "You are an expert technical interviewer. Evaluate the candidate's answer strictly and fairly.
+   Question: {question}
+   Candidate's answer: {answer}
+   Expected keywords: {expectedKeywords joined by comma}
+   Return ONLY a raw JSON object with NO markdown, NO code blocks, NO extra text. Exact format: { \"score\": <integer 1-10>, \"strengths\": [\"...\", \"...\"], \"improvements\": [\"...\", \"...\"], \"modelAnswer\": \"...\", \"keywordCoverage\": <integer 0-100> }"
+   
+   Call model.generateContent(prompt), get text, strip markdown fences, parse JSON.
+   Return parsed object.
+
+3. parseJD(jdText)
+   Build this prompt string:
+   "Read this job description carefully and generate exactly 5 targeted interview questions a recruiter would ask. Job Description: {jdText}
+   Return ONLY a raw JSON array with NO markdown, NO code blocks, NO extra text. Exact format: [{ \"question\": \"...\", \"hint\": \"...\", \"expectedKeywords\": [\"...\"] }, ...]"
+   
+   Call model.generateContent(prompt), get text, strip markdown fences, parse JSON array.
+   Return parsed array.
+
+IMPORTANT for all three functions:
+- Always strip markdown using: text.replace(/```json|```/g, "").trim()
+- Always wrap JSON.parse in try/catch. On catch, log the raw text and throw new Error("Gemini returned invalid JSON")
+- Never return raw text — always return parsed JavaScript objects/arrays.
+
+--- server/routes/question.js ---
+POST /api/question
+Body: { role, difficulty }
+Validate both fields exist, return 400 if missing.
+Call geminiService.generateQuestion(role, difficulty).
+Return the question object as JSON.
+
+--- server/routes/evaluate.js ---
+POST /api/evaluate
+Body: { question, answer, expectedKeywords, sessionId, questionIndex }
+Call geminiService.evaluateAnswer(question, answer, expectedKeywords).
+Find session by sessionId and push the answer, score, and feedback into MongoDB arrays.
+Return feedback JSON.
+
+--- server/routes/session.js ---
+POST /api/session/start
+Body: { role, difficulty }
+Generate sessionId: `session_${Date.now()}_${Math.random().toString(36).substr(2,9)}`
+Create and save new Session document.
+Return { sessionId }.
+
+GET /api/session/:sessionId
+Find session by sessionId. Return full session document as JSON.
+
+--- server/routes/jd.js ---
+POST /api/jd/questions
+Body: { jdText }
+Validate jdText exists and length >= 50 characters. Return 400 if not.
+Call geminiService.parseJD(jdText).
+Return questions array as JSON.
+
+--- server/middleware/errorHandler.js ---
+Standard Express error middleware (4 args: err, req, res, next).
+Log err.message to console.
+Return res.status(500).json({ error: err.message }).
+
+--- server/server.js ---
+Import express, cors, dotenv/config.
+Import and call db connection from config/db.js.
+Use express.json() middleware.
+Use cors({ origin: process.env.CLIENT_URL || "http://localhost:3000" }).
+Mount routes:
+  app.use("/api/question", require("./routes/question"))
+  app.use("/api/evaluate", require("./routes/evaluate"))
+  app.use("/api/session", require("./routes/session"))
+  app.use("/api/jd", require("./routes/jd"))
+Use errorHandler middleware as last middleware.
+Listen on process.env.PORT || 5000.
+Log "Server running on port X" on start.
+
+--- server/package.json scripts ---
+"start": "node server.js"
+"dev": "nodemon server.js"
+
+--- server/.env.example ---
+GEMINI_API_KEY=your_gemini_api_key_here
+MONGO_URI=your_mongodb_atlas_connection_string_here
+PORT=5000
+CLIENT_URL=http://localhost:3000
+
+═══════════════════════════════════════
+FRONTEND — BUILD THESE EXACTLY
+═══════════════════════════════════════
+
+--- client/src/services/api.js ---
+Base URL: const BASE = process.env.REACT_APP_API_URL || "http://localhost:5000"
+Export these async functions using axios:
+  startSession(role, difficulty) → POST /api/session/start → returns { sessionId }
+  getQuestion(role, difficulty) → POST /api/question → returns question object
+  evaluateAnswer(payload) → POST /api/evaluate → returns feedback object
+  getSession(sessionId) → GET /api/session/:sessionId → returns session document
+  getQuestionsFromJD(jdText) → POST /api/jd/questions → returns questions array
+Each function must have a try/catch. On error log and rethrow.
+
+--- client/src/context/SessionContext.jsx ---
+Create and export SessionContext and SessionProvider.
+State managed inside provider:
+  sessionId (string), role (string), difficulty (string),
+  currentQuestion (object), answers (array), scores (array),
+  feedbackList (array), questionIndex (number, default 0),
+  totalQuestions (number, default 5), phase (string, default "home")
+Expose all state values and their setters via context value.
+Wrap children in SessionContext.Provider.
+Export useSession() custom hook: return useContext(SessionContext).
+
+--- client/src/hooks/useVoice.js ---
+Detect: const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+If not available, return { supported: false } and stub functions.
+Create recognition instance. Set continuous: false, interimResults: true, lang: "en-US".
+State: transcript (string), listening (boolean).
+startListening(): reset transcript, call recognition.start(), set listening true.
+stopListening(): call recognition.stop().
+resetTranscript(): set transcript to "".
+recognition.onresult: concatenate e.results[i][0].transcript for all results, set transcript state.
+recognition.onend: set listening to false.
+Return { transcript, listening, startListening, stopListening, resetTranscript, supported: true }.
+
+--- client/src/hooks/useInterview.js ---
+Custom hook. Accepts { role, difficulty, totalQuestions }.
+Internal state: questions[], answers[], feedbackList[], scores[], currentIndex (0), sessionId (""), phase ("idle").
+Phases: "idle" → "loading" → "question" → "evaluating" → "feedback" → "summary"
+
+startSession():
+  Set phase to "loading".
+  Call api.startSession(role, difficulty), store sessionId.
+  Call api.getQuestion(role, difficulty), store in questions[0].
+  Set phase to "question".
+
+submitAnswer(answerText):
+  Set phase to "evaluating".
+  Call api.evaluateAnswer({ question: questions[currentIndex].question, answer: answerText, expectedKeywords: questions[currentIndex].expectedKeywords, sessionId, questionIndex: currentIndex }).
+  Push feedback to feedbackList, score to scores, answer to answers.
+  Set phase to "feedback".
+
+nextQuestion():
+  If currentIndex + 1 >= totalQuestions: set phase to "summary" and return.
+  Set phase to "loading".
+  Call api.getQuestion(role, difficulty), push to questions array.
+  Increment currentIndex.
+  Set phase to "question".
+
+restartSession(): reset all state to initial values, set phase to "idle".
+
+Return all state values and all four functions.
+
+--- client/src/components/Timer.jsx ---
+Props: { duration, onExpire, isActive }
+Use useEffect + setInterval for countdown.
+Display: MM:SS format padded with leading zeros.
+Color logic (apply to the timer text):
+  > 66% time remaining → color: var(--success) (green)
+  33–66% remaining → color: var(--warning) (amber)
+  < 33% remaining → color: var(--danger) (red)
+When countdown hits 0: clear interval, call onExpire().
+Reset countdown when isActive prop changes to true.
+
+--- client/src/components/VoiceInput.jsx ---
+Props: { onTranscript, disabled }
+Use useVoice() hook internally.
+If supported is false: render a muted message "Voice input not supported in this browser".
+Render a circular mic button.
+When listening: show pulsing "Listening..." text in red, button has red border.
+When not listening: normal state.
+On mic button click: if listening call stopListening(), else call startListening().
+useEffect: when transcript changes and listening is false and transcript is not empty, call onTranscript(transcript) and resetTranscript().
+
+--- client/src/components/FeedbackCard.jsx ---
+Props: { feedback, question, answer, onNext }
+Render:
+  Score: large number "/10". Green if >=7, amber if 4-6, red if <=3.
+  Keyword coverage: labeled progress bar showing feedback.keywordCoverage %.
+  Strengths: list with green left border, each item from feedback.strengths[].
+  Improvements: list with amber left border, each item from feedback.improvements[].
+  Model Answer: collapsed <details> element with <summary>Show model answer</summary> containing feedback.modelAnswer text.
+  "Next Question →" button at bottom calling props.onNext.
+
+--- client/src/components/HomeScreen.jsx ---
+Render:
+  App title "AI Interview Coach" as h1.
+  Subtitle: "Practice with AI. Get real feedback. Ace your placement."
+  Role dropdown (label: "Select Role"):
+    Options: Software Engineer, Data Analyst, Product Manager,
+             Frontend Developer, Backend Developer, Data Scientist
+  Difficulty dropdown (label: "Difficulty"):
+    Options: Easy, Medium, Hard
+  Questions count dropdown (label: "Number of Questions"):
+    Options: 3, 5, 10
+  "Start Interview" primary button — on click call useInterview's startSession(), navigate to /interview.
+  "Try with Job Description" secondary link — navigate to /jd.
+Use useSession() to store selections in context.
+Disable button while loading.
+
+--- client/src/components/InterviewScreen.jsx ---
+Use useInterview() hook. If phase is "idle" on mount, call startSession().
+Render based on phase:
+  "loading": centered spinner + "Preparing your question..."
+  "question" or "evaluating" or "feedback":
+    - Progress bar: thin bar at top, width = (currentIndex+1)/totalQuestions * 100%
+    - Badge row: role badge (blue) + difficulty badge (colored by difficulty)
+    - Question card: white surface card, large text showing questions[currentIndex].question
+    - Hint: "Show Hint" button, toggles to show questions[currentIndex].hint below question
+    - Answer area: <textarea> bound to local answerText state, min 4 rows
+    - VoiceInput component: when onTranscript fires, append transcript to answerText
+    - Timer component: 120 seconds, onExpire auto-submits if answerText is not empty
+    - Submit button: disabled if answerText.trim().length < 10 or phase is "evaluating"
+    - If phase is "evaluating": show spinner overlay on submit button area
+    - If phase is "feedback": show FeedbackCard below the question card, onNext calls nextQuestion()
+  "summary": navigate to /summary
+
+--- client/src/components/SessionSummary.jsx ---
+Get scores, answers, questions, role, difficulty from context.
+Calculate: avgScore = average of scores array (toFixed(1)).
+Find bestIndex = index of max score. Find weakestIndex = index of min score.
+Render:
+  "Interview Complete!" heading.
+  Average score as large styled number.
+  Recharts LineChart: width 100%, height 250, data = scores.map((s,i) => ({question: i+1, score: s})), XAxis dataKey="question", YAxis domain=[0,10], Line dataKey="score" stroke="#4F46E5".
+  Best answer section: question text + answer text from bestIndex.
+  Weakest topic: question text from weakestIndex.
+  Two buttons: "Practice Again" (calls restartSession(), navigate to /) and "Go Home" (navigate to /).
+
+--- client/src/pages/Dashboard.jsx ---
+Read sessionId from URL params (useParams) or fall back to context.
+On mount: call api.getSession(sessionId), store result in local state.
+Show loading spinner while fetching.
+Render:
+  Session info: role, difficulty, date (createdAt formatted).
+  Same LineChart as SessionSummary.
+  Expandable list: for each question, show question text, answer text, score badge.
+  Use <details><summary> for each item to keep it collapsible.
+
+--- client/src/pages/JDInterview.jsx ---
+Local state: jdText (string), questions (array), loading (bool), error (string).
+Render:
+  Heading: "Interview from Job Description"
+  Large textarea placeholder: "Paste the full job description here (minimum 50 characters)..."
+  "Generate Questions" button: disabled if jdText.length < 50 or loading.
+  On click: call api.getQuestionsFromJD(jdText), store in questions state.
+  Loading state: show "Gemini is reading the JD..." text with spinner.
+  Error state: show error message in red.
+  On success: show 5 question preview cards (question text + expectedKeywords as small tags).
+  "Start Interview with these Questions" button: store questions in context, navigate to /interview.
+
+--- client/src/App.jsx ---
+Import BrowserRouter, Routes, Route from react-router-dom.
+Import SessionProvider from context/SessionContext.
+Routes:
+  / → HomeScreen
+  /interview → InterviewScreen
+  /summary → SessionSummary
+  /dashboard → Dashboard
+  /jd → JDInterview
+Wrap all routes in SessionProvider and BrowserRouter.
+
+--- client/src/App.css ---
+Define CSS variables on :root:
+  --primary: #4F46E5
+  --primary-light: #EEF2FF
+  --success: #16A34A
+  --success-light: #F0FDF4
+  --warning: #D97706
+  --warning-light: #FFFBEB
+  --danger: #DC2626
+  --danger-light: #FEF2F2
+  --bg: #F9FAFB
+  --surface: #FFFFFF
+  --border: #E5E7EB
+  --text: #111827
+  --text-muted: #6B7280
+  --radius: 12px
+  --shadow: 0 1px 3px rgba(0,0,0,0.1)
+
+Dark mode via @media (prefers-color-scheme: dark):
+  --bg: #0F172A
+  --surface: #1E293B
+  --border: #334155
+  --text: #F1F5F9
+  --text-muted: #94A3B8
+  --primary-light: #1E1B4B
+  --success-light: #052E16
+  --warning-light: #1C1400
+  --danger-light: #1C0A0A
+
+Base styles:
+  * { box-sizing: border-box; margin: 0; padding: 0 }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; }
+  button { cursor: pointer; font-family: inherit; }
+  textarea { font-family: inherit; }
+
+Utility classes:
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; }
+  .btn-primary { background: var(--primary); color: white; border: none; border-radius: 8px; padding: 0.75rem 1.5rem; font-size: 1rem; font-weight: 500; }
+  .btn-primary:hover { opacity: 0.9; }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-secondary { background: transparent; color: var(--primary); border: 1px solid var(--primary); border-radius: 8px; padding: 0.75rem 1.5rem; font-size: 1rem; }
+  .spinner { width: 24px; height: 24px; border: 3px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+═══════════════════════════════════════
+ENVIRONMENT FILES
+═══════════════════════════════════════
+
+client/.env:
+  REACT_APP_API_URL=http://localhost:5000
+
+server/.env (user fills in real values):
+  GEMINI_API_KEY=
+  MONGO_URI=
+  PORT=5000
+  CLIENT_URL=http://localhost:3000
+
+═══════════════════════════════════════
+README.md
+═══════════════════════════════════════
+
+# AI Interview Coach
+
+AI-powered mock interview platform built with React, Node.js, and Google Gemini API.
+
+## Features
+- Role-specific AI-generated questions (SDE, Data Analyst, PM, and more)
+- Real-time AI feedback: score, strengths, improvements, model answer
+- Voice input via Web Speech API (no extra library)
+- Job Description parser — paste any JD to get tailored questions
+- Session history with score trend chart
+
+## Getting your Gemini API key
+1. Go to https://aistudio.google.com/app/apikey
+2. Click "Create API Key"
+3. Copy it into server/.env as GEMINI_API_KEY
+
+## Setup
+
+### Backend
+cd server
+npm install
+cp .env.example .env
+# Fill GEMINI_API_KEY and MONGO_URI in .env
+npm run dev
+
+### Frontend
+cd client
+npm install
+npm start
+
+## Tech Stack
+- Frontend: React.js, React Router v6, Axios, Recharts
+- Backend: Node.js, Express, MongoDB Atlas, Mongoose
+- AI: Google Gemini API (gemini-1.5-flash) via @google/generative-ai
+
+═══════════════════════════════════════
+FINAL INSTRUCTIONS FOR THE AGENT
+═══════════════════════════════════════
+
+1. Build ALL files listed above. Do not skip any file.
+2. Use @google/generative-ai SDK. Do NOT use fetch() or axios to call Gemini directly.
+3. Every Gemini response must have the markdown fence stripper applied before JSON.parse:
+   const cleaned = text.replace(/```json|```/g, "").trim()
+4. All backend routes must use async/await with try/catch and call next(error) on failure.
+5. The frontend must show loading/disabled states for every API call.
+6. Never hardcode the Gemini API key. Always read from process.env.GEMINI_API_KEY.
+7. Use gemini-1.5-flash as the model — it is fast and free-tier friendly.
+8. After building all files, show the exact terminal commands to run the project locally.
+9. If output is cut off mid-file, stop cleanly and tell me which file to request next.
